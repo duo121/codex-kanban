@@ -26,16 +26,6 @@ Supported transports:
 - stdio (`--listen stdio://`, default): newline-delimited JSON (JSONL)
 - websocket (`--listen ws://IP:PORT`): one JSON-RPC message per websocket text frame (**experimental / unsupported**)
 
-Websocket pairing auth:
-
-- Loopback websocket listeners stay open by default.
-- Non-loopback websocket listeners require a pairing token by default.
-- Use `--auth-token TOKEN` to require a specific token on any websocket listener.
-- When a non-loopback websocket listener starts without `--auth-token`, app-server generates a process-local pairing token, prints a `codex --remote ... --remote-auth-token ...` example, and rotates that token on restart.
-- Remote TUI clients send the token in the `x-codex-app-server-token` websocket header via `codex --remote-auth-token TOKEN`.
-- Unauthenticated loopback listeners reject websocket handshakes with an `Origin` header so browser pages cannot attach cross-site.
-- `/readyz` and `/healthz` remain unauthenticated.
-
 When running with `--listen ws://IP:PORT`, the same listener also serves basic HTTP health probes:
 
 - `GET /readyz` returns `200 OK` once the listener is accepting new connections.

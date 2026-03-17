@@ -4,8 +4,6 @@ mod jsonrpc_lite;
 mod protocol;
 mod schema_fixtures;
 
-pub const WEBSOCKET_AUTH_TOKEN_HEADER: &str = "x-codex-app-server-token";
-
 pub use experimental_api::*;
 pub use export::GenerateTsOptions;
 pub use export::generate_internal_json_schema;

@@ -331,10 +331,6 @@ struct AppServerCommand {
     )]
     listen: codex_app_server::AppServerTransport,
 
-    /// Pairing token required for websocket clients.
-    #[arg(long = "auth-token", value_name = "TOKEN")]
-    auth_token: Option<String>,
-
     /// Controls whether analytics are enabled by default.
     ///
     /// Analytics are disabled by default for app-server. Users have to explicitly opt in
@@ -527,7 +523,7 @@ struct InteractiveRemoteOptions {
     #[arg(long = "remote", value_name = "ADDR")]
     remote: Option<String>,
 
-    /// Pairing token to send to a remote app server websocket.
+    /// Bearer token to send to a remote app server websocket.
     #[arg(long = "remote-auth-token", value_name = "TOKEN")]
     remote_auth_token: Option<String>,
 }
@@ -683,7 +679,6 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     codex_core::config_loader::LoaderOverrides::default(),
                     app_server_cli.analytics_default_enabled,
                     transport,
-                    app_server_cli.auth_token,
                 )
                 .await?;
             }
@@ -1814,22 +1809,6 @@ mod tests {
                 bind_address: "127.0.0.1:4500".parse().expect("valid socket address"),
             }
         );
-    }
-
-    #[test]
-    fn app_server_auth_token_flag_parses() {
-        let app_server = app_server_from_args(
-            [
-                "codex",
-                "app-server",
-                "--listen",
-                "ws://127.0.0.1:4500",
-                "--auth-token",
-                "pairing-token",
-            ]
-            .as_ref(),
-        );
-        assert_eq!(app_server.auth_token.as_deref(), Some("pairing-token"));
     }
 
     #[test]

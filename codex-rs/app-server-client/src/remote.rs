@@ -36,7 +36,6 @@ use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::Result as JsonRpcResult;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
-use codex_app_server_protocol::WEBSOCKET_AUTH_TOKEN_HEADER;
 use futures::SinkExt;
 use futures::StreamExt;
 use serde::de::DeserializeOwned;
@@ -50,6 +49,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 use tracing::warn;
 use url::Url;
 
@@ -142,15 +142,14 @@ impl RemoteAppServerClient {
             )
         })?;
         if let Some(auth_token) = args.auth_token.as_deref() {
-            let header_value = HeaderValue::from_str(auth_token).map_err(|err| {
-                IoError::new(
-                    ErrorKind::InvalidInput,
-                    format!("invalid remote auth token header value: {err}"),
-                )
-            })?;
-            request
-                .headers_mut()
-                .insert(WEBSOCKET_AUTH_TOKEN_HEADER, header_value);
+            let header_value =
+                HeaderValue::from_str(&format!("Bearer {auth_token}")).map_err(|err| {
+                    IoError::new(
+                        ErrorKind::InvalidInput,
+                        format!("invalid remote authorization header value: {err}"),
+                    )
+                })?;
+            request.headers_mut().insert(AUTHORIZATION, header_value);
         }
         let stream = timeout(CONNECT_TIMEOUT, connect_async(request))
             .await

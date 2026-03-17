@@ -856,7 +856,6 @@ mod tests {
     use codex_app_server_protocol::ThreadStartResponse;
     use codex_app_server_protocol::ToolRequestUserInputParams;
     use codex_app_server_protocol::ToolRequestUserInputQuestion;
-    use codex_app_server_protocol::WEBSOCKET_AUTH_TOKEN_HEADER;
     use codex_core::AuthManager;
     use codex_core::ThreadManager;
     use codex_core::config::ConfigBuilder;
@@ -870,6 +869,7 @@ mod tests {
     use tokio_tungstenite::tungstenite::Message;
     use tokio_tungstenite::tungstenite::handshake::server::Request as WebSocketRequest;
     use tokio_tungstenite::tungstenite::handshake::server::Response as WebSocketResponse;
+    use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
     async fn build_test_config() -> Config {
         match ConfigBuilder::default().build().await {
@@ -938,9 +938,12 @@ mod tests {
                 move |request: &WebSocketRequest, response: WebSocketResponse| {
                     let provided_auth_token = request
                         .headers()
-                        .get(WEBSOCKET_AUTH_TOKEN_HEADER)
+                        .get(AUTHORIZATION)
                         .and_then(|value| value.to_str().ok())
                         .map(str::to_owned);
+                    let expected_auth_token = expected_auth_token
+                        .as_ref()
+                        .map(|token| format!("Bearer {token}"));
                     assert_eq!(provided_auth_token, expected_auth_token);
                     Ok(response)
                 },
@@ -1141,6 +1144,7 @@ mod tests {
                 }),
             )
             .await;
+            websocket.close(None).await.expect("close should succeed");
         })
         .await;
         let client = RemoteAppServerClient::connect(test_remote_connect_args(websocket_url))
@@ -1163,7 +1167,7 @@ mod tests {
 
     #[tokio::test]
     async fn remote_connect_includes_auth_header_when_configured() {
-        let auth_token = "pairing-token".to_string();
+        let auth_token = "remote-bearer-token".to_string();
         let websocket_url = start_test_remote_server_with_auth(
             Some(auth_token.clone()),
             |mut websocket| async move {

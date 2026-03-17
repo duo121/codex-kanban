@@ -21,10 +21,6 @@ struct AppServerArgs {
         default_value = AppServerTransport::DEFAULT_LISTEN_URL
     )]
     listen: AppServerTransport,
-
-    /// Pairing token required for websocket clients.
-    #[arg(long = "auth-token", value_name = "TOKEN")]
-    auth_token: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -43,7 +39,6 @@ fn main() -> anyhow::Result<()> {
             loader_overrides,
             /*default_analytics_enabled*/ false,
             transport,
-            args.auth_token,
         )
         .await?;
         Ok(())
