@@ -13,7 +13,7 @@ use std::time::Instant;
 
 const POWERSHELL_PARSER_SCRIPT: &str = include_str!("powershell_parser.ps1");
 const POWERSHELL_PARSER_TIMEOUT: Duration = Duration::from_secs(5);
-const POWERSHELL_PARSER_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const POWERSHELL_PARSER_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// On Windows, we conservatively allow only clearly read-only PowerShell invocations
 /// that match a small safelist. Anything else (including direct CMD commands) is unsafe.
