@@ -34,10 +34,11 @@ const CODE_MODE_BRIDGE_SOURCE: &str = include_str!("bridge.js");
 const CODE_MODE_DESCRIPTION_TEMPLATE: &str = include_str!("description.md");
 const CODE_MODE_WAIT_DESCRIPTION_TEMPLATE: &str = include_str!("wait_description.md");
 const CODE_MODE_PRAGMA_PREFIX: &str = "// @exec:";
-const CODE_MODE_ONLY_PREFACE: &str = "Use `exec/exec_wait` tool to run all other tools, do not attempt to use any other tools directly";
+const CODE_MODE_ONLY_PREFACE: &str =
+    "Use `exec/wait` tool to run all other tools, do not attempt to use any other tools directly";
 
 pub(crate) const PUBLIC_TOOL_NAME: &str = "exec";
-pub(crate) const WAIT_TOOL_NAME: &str = "exec_wait";
+pub(crate) const WAIT_TOOL_NAME: &str = "wait";
 
 pub(crate) fn is_code_mode_nested_tool(tool_name: &str) -> bool {
     tool_name != PUBLIC_TOOL_NAME && tool_name != WAIT_TOOL_NAME
@@ -109,6 +110,9 @@ async fn handle_node_message(
 ) -> Result<CodeModeSessionProgress, String> {
     match message {
         protocol::NodeToHostMessage::ToolCall { .. } => Err(protocol::unexpected_tool_call_error()),
+        protocol::NodeToHostMessage::Notify { .. } => Err(format!(
+            "unexpected {PUBLIC_TOOL_NAME} notify message in response path"
+        )),
         protocol::NodeToHostMessage::Yielded { content_items, .. } => {
             let mut delta_items = output_content_items_from_json_values(content_items)?;
             delta_items = truncate_code_mode_result(delta_items, poll_max_output_tokens.flatten());
