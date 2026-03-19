@@ -1,60 +1,126 @@
-<p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install --cask codex</code></p>
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
-<p align="center">
-  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
-</p>
-</br>
-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+# codex-kanban
 
----
+`codex-kanban` is a public fork of [openai/codex](https://github.com/openai/codex) that adds a board-based multi-session workflow on top of the official Codex CLI.
 
-## Quickstart
+The project keeps the official chat experience as intact as possible and layers kanban-style session management on top of it instead of rebuilding the whole TUI.
 
-### Installing and running Codex CLI
+## Why this fork exists
 
-Install globally with your preferred package manager:
+The official Codex CLI is optimized around one terminal window per active session.
 
-```shell
-# Install using npm
-npm install -g @openai/codex
+That model breaks down when you want to drive many concurrent tasks at once:
+
+- too many terminal windows
+- fragmented session state
+- hard to see which session is still running
+- high context-switch cost when following up
+
+`codex-kanban` keeps the official interaction model on the right side and adds lightweight board/session management so one Codex window can manage a small working set of sessions.
+
+## Design principles
+
+- Reuse the official Codex UI wherever possible
+- Keep `/resume` semantics unchanged
+- Avoid introducing a permanent custom sidebar
+- Minimize fork drift so upstream sync stays manageable
+- Treat boards as an organizational layer, not a new transcript store
+
+## Current MVP scope
+
+The current implementation focuses on a low-drift kanban workflow:
+
+- `/kb` opens the board picker
+- `~` opens the current board's session picker
+- create, rename, delete, and switch boards
+- create, rename, remove, search, and reorder sessions inside a board
+- board-local session state tracking:
+  - `running`
+  - `needs attention`
+  - `seen`
+  - `waiting approval`
+  - `errored`
+- persistence for boards, board sessions, ordering, and status snapshots
+- mirrored behavior in both `codex-tui` and `codex-tui-app-server`
+
+Removing a session from a board does not delete the underlying Codex thread. It remains available through the normal `/resume` flow.
+
+## Interaction model
+
+### `/kb`
+
+Global board entry point:
+
+- search boards
+- `n` create board
+- `r` rename board
+- `d` delete board with confirmation
+- `Enter` bind the current window to the selected board
+
+### `~`
+
+Current board session entry point:
+
+- search sessions in the current board
+- `n` create a new session inside the bound board
+- `r` rename the selected board session
+- `d` remove it from the board with confirmation
+- `Shift+Up` / `Shift+Down` reorder sessions
+- `Enter` switch the active chat area to that session
+
+## Architecture notes
+
+This fork intentionally keeps most changes in isolated modules:
+
+- `codex-rs/tui/src/app/boards.rs`
+- `codex-rs/tui/src/app/board_state_sync.rs`
+- `codex-rs/tui_app_server/src/app/boards.rs`
+- `codex-rs/tui_app_server/src/app/board_state_sync.rs`
+- `codex-rs/state/src/runtime/boards.rs`
+- `codex-rs/core/src/boards.rs`
+
+That structure is deliberate so future upstream sync work stays focused and predictable.
+
+## Building from source
+
+Follow the upstream install guide first:
+
+- [Installing and building](./docs/install.md)
+
+Then run the Rust workspace locally:
+
+```bash
+cd codex-rs
+cargo run -p codex-cli --bin codex
 ```
 
-```shell
-# Install using Homebrew
-brew install --cask codex
-```
+## Project docs
 
-Then simply run `codex` to get started.
+- [Slash commands](./docs/slash_commands.md)
+- [Product spec](./docs/codex-kanban-product-spec.md)
+- [Vercel docs-site deployment](./docs/vercel-deploy.md)
+- [Contributing](./docs/contributing.md)
+- [Installing & building](./docs/install.md)
 
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+## Upstream sync strategy
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+The repository keeps both remotes:
 
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+- `origin` -> `duo121/codex-kanban`
+- `upstream` -> `openai/codex`
 
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+Recommended maintenance flow:
 
-</details>
+1. Fetch upstream regularly.
+2. Rebase or merge upstream into `main`.
+3. Keep kanban changes isolated to board-related modules and minimal app wiring.
+4. Mirror TUI behavior in both local and app-server variants.
 
-### Using Codex with your ChatGPT plan
+## Vercel note
 
-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Team, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
+Vercel is appropriate for a project website or documentation site for `codex-kanban`.
 
-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+It is not a runtime target for the Rust TUI itself. The CLI and TUI still run locally on the user's machine.
 
-## Docs
+## License
 
-- [**Codex Documentation**](https://developers.openai.com/codex)
-- [**Contributing**](./docs/contributing.md)
-- [**Installing & building**](./docs/install.md)
-- [**Open source fund**](./docs/open-source-fund.md)
-
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+This repository remains under the [Apache-2.0 License](LICENSE).

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use codex_app_server_protocol::McpServerStatus;
 use codex_chatgpt::connectors::AppInfo;
+use codex_core::boards::BoardSessionMoveDirection;
 use codex_file_search::FileMatch;
 use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ModelPreset;
@@ -97,6 +98,92 @@ pub(crate) enum AppEvent {
 
     /// Open the resume picker inside the running TUI session.
     OpenResumePicker,
+
+    /// Open the kanban board picker.
+    OpenBoardPicker,
+
+    /// Open the prompt for creating a board.
+    OpenCreateBoardPrompt,
+
+    /// Create a board with the provided name.
+    CreateBoard {
+        name: String,
+    },
+
+    /// Open the prompt for renaming a board.
+    OpenRenameBoardPrompt {
+        board_id: String,
+        current_name: String,
+    },
+
+    /// Rename a board.
+    RenameBoard {
+        board_id: String,
+        name: String,
+    },
+
+    /// Open the confirmation prompt for deleting a board.
+    OpenDeleteBoardPrompt {
+        board_id: String,
+        board_name: String,
+    },
+
+    /// Delete a board.
+    DeleteBoard {
+        board_id: String,
+    },
+
+    /// Bind the current window to a board.
+    BindBoard {
+        board_id: String,
+        open_sessions_after: bool,
+    },
+
+    /// Open the session picker for the currently bound board.
+    OpenCurrentBoardSessionPicker,
+
+    /// Create a new session in the currently bound board.
+    CreateBoundBoardSession,
+
+    /// Switch to a session in a board.
+    SwitchBoardSession {
+        board_id: String,
+        thread_id: ThreadId,
+    },
+
+    /// Open the confirmation prompt for removing a session from a board.
+    OpenRemoveBoardSessionPrompt {
+        board_id: String,
+        thread_id: ThreadId,
+        title: String,
+    },
+
+    /// Open the prompt for renaming a session within a board.
+    OpenRenameBoardSessionPrompt {
+        board_id: String,
+        thread_id: ThreadId,
+        current_name: String,
+    },
+
+    /// Rename a session within a board.
+    RenameBoardSession {
+        board_id: String,
+        thread_id: ThreadId,
+        name: String,
+    },
+
+    /// Move a session within a board.
+    MoveBoardSession {
+        board_id: String,
+        thread_id: ThreadId,
+        direction: BoardSessionMoveDirection,
+    },
+
+    /// Remove a session from a board.
+    RemoveBoardSession {
+        board_id: String,
+        thread_id: ThreadId,
+    },
 
     /// Fork the current session into a new thread.
     ForkCurrentSession,

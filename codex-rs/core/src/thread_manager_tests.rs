@@ -157,6 +157,58 @@ async fn shutdown_all_threads_bounded_submits_shutdown_to_every_thread() {
 }
 
 #[tokio::test]
+async fn new_thread_can_materialize_rollout_before_first_turn() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config();
+    config.codex_home = temp_dir.path().join("codex-home");
+    config.cwd = config.codex_home.clone();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.clone(),
+    );
+    let new_thread = manager
+        .start_thread(config)
+        .await
+        .expect("start board thread");
+    let rollout_path = new_thread
+        .thread
+        .rollout_path()
+        .expect("persistent thread should have a rollout path");
+    assert!(
+        !rollout_path.exists(),
+        "fresh thread should defer materialization"
+    );
+
+    new_thread.thread.ensure_rollout_materialized().await;
+
+    assert!(
+        rollout_path.exists(),
+        "materialized board thread should have a rollout file"
+    );
+    let state_db = new_thread
+        .thread
+        .state_db()
+        .expect("state db should be available");
+    assert!(
+        state_db
+            .get_thread(new_thread.thread_id)
+            .await
+            .expect("state db lookup should succeed")
+            .is_some(),
+        "materialized board thread should be registered in state db"
+    );
+
+    new_thread
+        .thread
+        .shutdown_and_wait()
+        .await
+        .expect("thread shutdown");
+}
+
+#[tokio::test]
 async fn new_uses_configured_openai_provider_for_model_refresh() {
     let server = MockServer::start().await;
     let models_mock = mount_models_once(&server, ModelsResponse { models: vec![] }).await;

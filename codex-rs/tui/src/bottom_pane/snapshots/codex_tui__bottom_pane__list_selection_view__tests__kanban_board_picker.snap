@@ -1,0 +1,18 @@
+---
+source: tui/src/bottom_pane/list_selection_view.rs
+assertion_line: 1332
+expression: "render_lines_with_width(&view, 64)"
+---
+                                                                
+  Boards                                                        
+  Bind this window to a board                                   
+                                                                
+  Type to search boards                                         
+› feat: payments (current)  5 sessions · 2 running · 1 needs    
+                            attention                           
+  feat: auth                3 sessions · 0 running · 0 needs    
+                            attention                           
+  ops: launch               4 sessions · 1 running · 2 needs    
+                            attention                           
+                                                                
+  enter bind  n create  r rename  d delete  esc close

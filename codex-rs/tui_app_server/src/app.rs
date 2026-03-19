@@ -60,6 +60,7 @@ use codex_app_server_protocol::SkillsListResponse;
 use codex_app_server_protocol::ThreadRollbackResponse;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnStatus;
+use codex_core::boards::BoardRegistry;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
 use codex_core::config::ConfigOverrides;
@@ -129,6 +130,8 @@ use uuid::Uuid;
 mod agent_navigation;
 mod app_server_adapter;
 mod app_server_requests;
+mod board_state_sync;
+mod boards;
 mod pending_interactive_replay;
 
 use self::agent_navigation::AgentNavigationDirection;
@@ -967,6 +970,8 @@ pub(crate) struct App {
     pending_shutdown_exit_thread_id: Option<ThreadId>,
 
     windows_sandbox: WindowsSandboxState,
+    board_registry: Option<BoardRegistry>,
+    bound_board_id: Option<String>,
 
     thread_event_channels: HashMap<ThreadId, ThreadEventChannel>,
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
@@ -1792,6 +1797,7 @@ impl App {
             .try_submit_active_thread_op_via_app_server(app_server, thread_id, &op)
             .await?
         {
+            self.sync_board_state_for_outbound_op(thread_id, &op).await;
             if ThreadEventStore::op_can_change_pending_replay_state(&op) {
                 self.note_thread_outbound_op(thread_id, &op).await;
                 self.refresh_pending_thread_approvals().await;
@@ -2123,6 +2129,8 @@ impl App {
         thread_id: ThreadId,
         notification: ServerNotification,
     ) -> Result<()> {
+        self.sync_board_state_for_thread_notification(thread_id, &notification)
+            .await;
         let inferred_session = self
             .infer_session_for_thread_notification(thread_id, &notification)
             .await;
@@ -2199,6 +2207,8 @@ impl App {
         thread_id: ThreadId,
         request: ServerRequest,
     ) -> Result<()> {
+        self.sync_board_state_for_thread_request(thread_id, &request)
+            .await;
         let inactive_interactive_request = if self.active_thread_id != Some(thread_id) {
             self.interactive_request_for_thread_request(thread_id, &request)
                 .await
@@ -2629,6 +2639,7 @@ impl App {
         thread_id: ThreadId,
     ) -> Result<()> {
         if self.active_thread_id == Some(thread_id) {
+            self.mark_bound_board_session_seen(thread_id).await;
             return Ok(());
         }
 
@@ -2680,6 +2691,7 @@ impl App {
         }
         self.drain_active_thread_events(tui).await?;
         self.refresh_pending_thread_approvals().await;
+        self.mark_bound_board_session_seen(thread_id).await;
 
         Ok(())
     }
@@ -3086,6 +3098,11 @@ impl App {
             .maybe_prompt_windows_sandbox_enable(should_prompt_windows_sandbox_nux_at_startup);
 
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let board_registry_result = BoardRegistry::open(&config).await;
+        let (board_registry, board_registry_error) = match board_registry_result {
+            Ok(board_registry) => (Some(board_registry), None),
+            Err(err) => (None, Some(err)),
+        };
         #[cfg(not(debug_assertions))]
         let upgrade_version = crate::updates::get_upgrade_version(&config);
 
@@ -3116,6 +3133,8 @@ impl App {
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
             windows_sandbox: WindowsSandboxState::default(),
+            board_registry,
+            bound_board_id: None,
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
@@ -3126,6 +3145,11 @@ impl App {
             pending_primary_events: VecDeque::new(),
             pending_app_server_requests: PendingAppServerRequests::default(),
         };
+        if let Some(err) = board_registry_error {
+            app.chat_widget.add_error_message(format!(
+                "Board persistence is unavailable for this session: {err}"
+            ));
+        }
         if let Some(started) = initial_started_thread {
             app.enqueue_primary_thread_session(started.session, started.turns)
                 .await?;
@@ -3340,15 +3364,23 @@ impl App {
     ) -> Result<AppRunControl> {
         match event {
             AppEvent::NewSession => {
-                self.start_fresh_session_with_summary_hint(tui, app_server)
-                    .await;
+                if self.bound_board_id.is_some() {
+                    self.create_bound_board_session(tui, app_server).await?;
+                } else {
+                    self.start_fresh_session_with_summary_hint(tui, app_server)
+                        .await;
+                }
             }
             AppEvent::ClearUi => {
                 self.clear_terminal_ui(tui, /*redraw_header*/ false)?;
                 self.reset_app_ui_state_after_clear();
 
-                self.start_fresh_session_with_summary_hint(tui, app_server)
-                    .await;
+                if self.bound_board_id.is_some() {
+                    self.create_bound_board_session(tui, app_server).await?;
+                } else {
+                    self.start_fresh_session_with_summary_hint(tui, app_server)
+                        .await;
+                }
             }
             AppEvent::OpenResumePicker => {
                 let picker_app_server = match crate::start_app_server_for_picker(
@@ -3466,6 +3498,91 @@ impl App {
 
                 // Leaving alt-screen may blank the inline viewport; force a redraw either way.
                 tui.frame_requester().schedule_frame();
+            }
+            AppEvent::OpenBoardPicker => {
+                self.open_board_picker().await;
+            }
+            AppEvent::OpenCreateBoardPrompt => {
+                self.open_create_board_prompt();
+            }
+            AppEvent::CreateBoard { name } => {
+                self.create_board(name).await;
+            }
+            AppEvent::OpenRenameBoardPrompt {
+                board_id,
+                current_name,
+            } => {
+                self.open_rename_board_prompt(board_id, current_name);
+            }
+            AppEvent::RenameBoard { board_id, name } => {
+                self.rename_board(board_id, name).await;
+            }
+            AppEvent::OpenDeleteBoardPrompt {
+                board_id,
+                board_name,
+            } => {
+                self.open_delete_board_prompt(board_id, board_name);
+            }
+            AppEvent::DeleteBoard { board_id } => {
+                self.delete_board(board_id).await;
+            }
+            AppEvent::BindBoard {
+                board_id,
+                open_sessions_after,
+            } => {
+                self.bind_board(tui, app_server, board_id, open_sessions_after)
+                    .await?;
+            }
+            AppEvent::OpenCurrentBoardSessionPicker => {
+                self.open_current_board_session_picker(app_server).await;
+            }
+            AppEvent::CreateBoundBoardSession => {
+                self.create_bound_board_session(tui, app_server).await?;
+            }
+            AppEvent::SwitchBoardSession {
+                board_id,
+                thread_id,
+            } => {
+                let _ = self
+                    .switch_to_board_session(tui, app_server, board_id, thread_id)
+                    .await?;
+            }
+            AppEvent::OpenRemoveBoardSessionPrompt {
+                board_id,
+                thread_id,
+                title,
+            } => {
+                self.open_remove_board_session_prompt(board_id, thread_id, title);
+            }
+            AppEvent::OpenRenameBoardSessionPrompt {
+                board_id,
+                thread_id,
+                current_name,
+            } => {
+                self.open_rename_board_session_prompt(board_id, thread_id, current_name);
+            }
+            AppEvent::RenameBoardSession {
+                board_id,
+                thread_id,
+                name,
+            } => {
+                self.rename_board_session(app_server, board_id, thread_id, name)
+                    .await?;
+            }
+            AppEvent::MoveBoardSession {
+                board_id,
+                thread_id,
+                direction,
+            } => {
+                self.move_board_session(app_server, board_id, thread_id, direction)
+                    .await?;
+            }
+            AppEvent::RemoveBoardSession {
+                board_id,
+                thread_id,
+            } => {
+                self.remove_board_session(tui, app_server, board_id, thread_id)
+                    .await?;
             }
             AppEvent::ForkCurrentSession => {
                 self.session_telemetry.counter(
@@ -4992,6 +5109,18 @@ impl App {
         // editing behavior for moving across words inside a draft.
         let allow_agent_word_motion_fallback = !self.enhanced_keys_supported
             && self.chat_widget.composer_text_with_pending().is_empty();
+        if self.overlay.is_none()
+            && self.chat_widget.no_modal_or_popup_active()
+            && self.chat_widget.composer_text_with_pending().is_empty()
+            && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+            && matches!(key_event.code, KeyCode::Char('~'))
+            && !crossterm::event::KeyModifiers::CONTROL.intersects(key_event.modifiers)
+            && !crossterm::event::KeyModifiers::ALT.intersects(key_event.modifiers)
+        {
+            self.app_event_tx
+                .send(AppEvent::OpenCurrentBoardSessionPicker);
+            return;
+        }
         if self.overlay.is_none()
             && self.chat_widget.no_modal_or_popup_active()
             // Alt+Left/Right are also natural word-motion keys in the composer. Keep agent
@@ -7768,6 +7897,8 @@ guardian_approval = true
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
             windows_sandbox: WindowsSandboxState::default(),
+            board_registry: None,
+            bound_board_id: None,
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
@@ -7819,6 +7950,8 @@ guardian_approval = true
                 pending_update_action: None,
                 pending_shutdown_exit_thread_id: None,
                 windows_sandbox: WindowsSandboxState::default(),
+                board_registry: None,
+                bound_board_id: None,
                 thread_event_channels: HashMap::new(),
                 thread_event_listener_tasks: HashMap::new(),
                 agent_navigation: AgentNavigationState::default(),

@@ -1,0 +1,15 @@
+---
+source: tui/src/bottom_pane/list_selection_view.rs
+assertion_line: 1346
+expression: "render_lines_with_width(&view, 64)"
+---
+                                                                
+  Board Sessions                                                
+  Switch sessions in the current board                          
+                                                                
+  Type to search sessions                                       
+› Main implementation (current)  running                        
+  Fix tests                      needs attention                
+  Audit logs                     waiting approval               
+                                                                
+  enter switch  n new  r rename  d remove  shift + ↑/shift + ↓ m

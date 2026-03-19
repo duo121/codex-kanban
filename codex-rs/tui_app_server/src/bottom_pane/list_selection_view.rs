@@ -103,6 +103,22 @@ pub(crate) type OnSelectionChangedCallback =
 /// Ctrl+C).  Used by the theme picker to restore the pre-open theme.
 pub(crate) type OnCancelCallback = Option<Box<dyn Fn(&AppEventSender) + Send + Sync>>;
 
+pub(crate) type SelectionHotkeyAction = Box<dyn Fn(Option<usize>, &AppEventSender) + Send + Sync>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectionHotkeyScope {
+    #[allow(dead_code)]
+    Always,
+    WhenSearchEmpty,
+}
+
+pub(crate) struct SelectionHotkey {
+    pub binding: KeyBinding,
+    pub action: SelectionHotkeyAction,
+    pub dismiss_view: bool,
+    pub scope: SelectionHotkeyScope,
+}
+
 /// One row in a [`ListSelectionView`] selection list.
 ///
 /// This is the source-of-truth model for row state before filtering and
@@ -173,6 +189,9 @@ pub(crate) struct SelectionViewParams {
 
     /// Called when the picker is dismissed via Esc/Ctrl+C without selecting.
     pub on_cancel: OnCancelCallback,
+
+    /// Picker-level hotkeys that act on the currently highlighted row.
+    pub hotkeys: Vec<SelectionHotkey>,
 }
 
 impl Default for SelectionViewParams {
@@ -196,6 +215,7 @@ impl Default for SelectionViewParams {
             preserve_side_content_bg: false,
             on_selection_changed: None,
             on_cancel: None,
+            hotkeys: Vec::new(),
         }
     }
 }
@@ -232,6 +252,7 @@ pub(crate) struct ListSelectionView {
 
     /// Called when the picker is dismissed via Esc/Ctrl+C without selecting.
     on_cancel: OnCancelCallback,
+    hotkeys: Vec<SelectionHotkey>,
 }
 
 impl ListSelectionView {
@@ -280,6 +301,7 @@ impl ListSelectionView {
             preserve_side_content_bg: params.preserve_side_content_bg,
             on_selection_changed: params.on_selection_changed,
             on_cancel: params.on_cancel,
+            hotkeys: params.hotkeys,
         };
         s.apply_filter();
         s
@@ -570,10 +592,34 @@ impl ListSelectionView {
             }
         }
     }
+
+    fn try_handle_hotkey(&mut self, key_event: KeyEvent) -> bool {
+        let selected_actual_idx = self.selected_actual_idx();
+        for hotkey in &self.hotkeys {
+            if !hotkey.binding.is_press(key_event) {
+                continue;
+            }
+            if matches!(hotkey.scope, SelectionHotkeyScope::WhenSearchEmpty)
+                && !self.search_query.is_empty()
+            {
+                continue;
+            }
+            (hotkey.action)(selected_actual_idx, &self.app_event_tx);
+            if hotkey.dismiss_view {
+                self.complete = true;
+            }
+            return true;
+        }
+        false
+    }
 }
 
 impl BottomPaneView for ListSelectionView {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        if self.try_handle_hotkey(key_event) {
+            return;
+        }
+
         match key_event {
             // Some terminals (or configurations) send Control key chords as
             // C0 control characters without reporting the CONTROL modifier.
@@ -987,6 +1033,7 @@ mod tests {
     use super::*;
     use crate::app_event::AppEvent;
     use crate::bottom_pane::popup_consts::standard_popup_hint_line;
+    use crate::key_hint;
     use crossterm::event::KeyCode;
     use insta::assert_snapshot;
     use pretty_assertions::assert_eq;
@@ -1149,6 +1196,129 @@ mod tests {
         format!("before scroll:\n{before_scroll}\n\nafter scroll:\n{after_scroll}")
     }
 
+    fn kanban_board_picker_hint_line() -> Line<'static> {
+        vec![
+            key_hint::plain(KeyCode::Enter).into(),
+            " bind".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('n')).into(),
+            " create".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('r')).into(),
+            " rename".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('d')).into(),
+            " delete".dim(),
+            "  esc close".dim(),
+        ]
+        .into()
+    }
+
+    fn kanban_board_sessions_hint_line() -> Line<'static> {
+        vec![
+            key_hint::plain(KeyCode::Enter).into(),
+            " switch".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('n')).into(),
+            " new".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('r')).into(),
+            " rename".dim(),
+            "  ".into(),
+            key_hint::plain(KeyCode::Char('d')).into(),
+            " remove".dim(),
+            "  ".into(),
+            key_hint::shift(KeyCode::Up).into(),
+            "/".dim(),
+            key_hint::shift(KeyCode::Down).into(),
+            " move".dim(),
+            "  esc close".dim(),
+        ]
+        .into()
+    }
+
+    fn make_kanban_board_picker_view() -> ListSelectionView {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let items = vec![
+            SelectionItem {
+                name: "feat: payments".to_string(),
+                description: Some("5 sessions · 2 running · 1 needs attention".to_string()),
+                is_current: true,
+                dismiss_on_select: true,
+                search_value: Some("feat: payments".to_string()),
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "feat: auth".to_string(),
+                description: Some("3 sessions · 0 running · 0 needs attention".to_string()),
+                dismiss_on_select: true,
+                search_value: Some("feat: auth".to_string()),
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "ops: launch".to_string(),
+                description: Some("4 sessions · 1 running · 2 needs attention".to_string()),
+                dismiss_on_select: true,
+                search_value: Some("ops: launch".to_string()),
+                ..Default::default()
+            },
+        ];
+        ListSelectionView::new(
+            SelectionViewParams {
+                title: Some("Boards".to_string()),
+                subtitle: Some("Bind this window to a board".to_string()),
+                footer_hint: Some(kanban_board_picker_hint_line()),
+                items,
+                is_searchable: true,
+                search_placeholder: Some("Type to search boards".to_string()),
+                ..Default::default()
+            },
+            tx,
+        )
+    }
+
+    fn make_kanban_board_sessions_view() -> ListSelectionView {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let items = vec![
+            SelectionItem {
+                name: "Main implementation".to_string(),
+                description: Some("running".to_string()),
+                is_current: true,
+                dismiss_on_select: true,
+                search_value: Some("Main implementation".to_string()),
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Fix tests".to_string(),
+                description: Some("needs attention".to_string()),
+                dismiss_on_select: true,
+                search_value: Some("Fix tests".to_string()),
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Audit logs".to_string(),
+                description: Some("waiting approval".to_string()),
+                dismiss_on_select: true,
+                search_value: Some("Audit logs".to_string()),
+                ..Default::default()
+            },
+        ];
+        ListSelectionView::new(
+            SelectionViewParams {
+                title: Some("Board Sessions".to_string()),
+                subtitle: Some("Switch sessions in the current board".to_string()),
+                footer_hint: Some(kanban_board_sessions_hint_line()),
+                items,
+                is_searchable: true,
+                search_placeholder: Some("Type to search sessions".to_string()),
+                ..Default::default()
+            },
+            tx,
+        )
+    }
+
     #[test]
     fn renders_blank_line_between_title_and_items_without_subtitle() {
         let view = make_selection_view(None);
@@ -1162,6 +1332,18 @@ mod tests {
     fn renders_blank_line_between_subtitle_and_items() {
         let view = make_selection_view(Some("Switch between Codex approval presets"));
         assert_snapshot!("list_selection_spacing_with_subtitle", render_lines(&view));
+    }
+
+    #[test]
+    fn kanban_board_picker_snapshot() {
+        let view = make_kanban_board_picker_view();
+        assert_snapshot!("kanban_board_picker", render_lines_with_width(&view, 64));
+    }
+
+    #[test]
+    fn kanban_board_sessions_snapshot() {
+        let view = make_kanban_board_sessions_view();
+        assert_snapshot!("kanban_board_sessions", render_lines_with_width(&view, 64));
     }
 
     #[test]
@@ -1351,6 +1533,77 @@ mod tests {
             rx.try_recv().is_err(),
             "moving down in a single-item list should not fire on_selection_changed",
         );
+    }
+
+    #[test]
+    fn searchable_hotkey_triggers_when_search_query_is_empty() {
+        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut view = ListSelectionView::new(
+            SelectionViewParams {
+                items: vec![SelectionItem {
+                    name: "Only choice".to_string(),
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }],
+                is_searchable: true,
+                hotkeys: vec![SelectionHotkey {
+                    binding: key_hint::plain(KeyCode::Char('n')),
+                    action: Box::new(|_selected_idx, tx: &_| {
+                        tx.send(AppEvent::OpenApprovalsPopup);
+                    }),
+                    dismiss_view: true,
+                    scope: SelectionHotkeyScope::WhenSearchEmpty,
+                }],
+                ..Default::default()
+            },
+            tx,
+        );
+
+        view.handle_key_event(KeyEvent::from(KeyCode::Char('n')));
+
+        assert!(view.is_complete());
+        match rx.try_recv() {
+            Ok(AppEvent::OpenApprovalsPopup) => {}
+            Ok(other) => panic!("expected OpenApprovalsPopup hotkey event, got {other:?}"),
+            Err(err) => panic!("expected hotkey event, got {err}"),
+        }
+    }
+
+    #[test]
+    fn searchable_hotkey_is_ignored_after_search_text_exists() {
+        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut view = ListSelectionView::new(
+            SelectionViewParams {
+                items: vec![SelectionItem {
+                    name: "Only choice".to_string(),
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }],
+                is_searchable: true,
+                hotkeys: vec![SelectionHotkey {
+                    binding: key_hint::plain(KeyCode::Char('n')),
+                    action: Box::new(|_selected_idx, tx: &_| {
+                        tx.send(AppEvent::OpenApprovalsPopup);
+                    }),
+                    dismiss_view: true,
+                    scope: SelectionHotkeyScope::WhenSearchEmpty,
+                }],
+                ..Default::default()
+            },
+            tx,
+        );
+        view.set_search_query("x".to_string());
+
+        view.handle_key_event(KeyEvent::from(KeyCode::Char('n')));
+
+        assert!(!view.is_complete());
+        assert!(
+            rx.try_recv().is_err(),
+            "hotkey should not fire while searching"
+        );
+        assert_eq!(view.search_query, "xn");
     }
 
     #[test]

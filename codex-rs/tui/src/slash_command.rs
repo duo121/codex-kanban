@@ -25,6 +25,7 @@ pub enum SlashCommand {
     Review,
     Rename,
     New,
+    Kb,
     Resume,
     Fork,
     Init,
@@ -75,6 +76,7 @@ impl SlashCommand {
             SlashCommand::Review => "review my current changes and find issues",
             SlashCommand::Rename => "rename the current thread",
             SlashCommand::Resume => "resume a saved chat",
+            SlashCommand::Kb => "manage kanban boards for this window",
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
             // SlashCommand::Undo => "ask Codex to undo a turn",
@@ -166,6 +168,7 @@ impl SlashCommand {
             | SlashCommand::Stop
             | SlashCommand::Mcp
             | SlashCommand::Apps
+            | SlashCommand::Kb
             | SlashCommand::Feedback
             | SlashCommand::Quit
             | SlashCommand::Exit => true,

@@ -221,6 +221,7 @@ use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::BottomPane;
 use crate::bottom_pane::BottomPaneParams;
+use crate::bottom_pane::BottomPaneView;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::CollaborationModeIndicator;
 use crate::bottom_pane::ColumnWidthMode;
@@ -4278,6 +4279,11 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    pub(crate) fn show_view(&mut self, view: Box<dyn BottomPaneView>) {
+        self.bottom_pane.show_view(view);
+        self.request_redraw();
+    }
+
     pub(crate) fn no_modal_or_popup_active(&self) -> bool {
         self.bottom_pane.no_modal_or_popup_active()
     }
@@ -4332,6 +4338,9 @@ impl ChatWidget {
             }
             SlashCommand::Resume => {
                 self.app_event_tx.send(AppEvent::OpenResumePicker);
+            }
+            SlashCommand::Kb => {
+                self.app_event_tx.send(AppEvent::OpenBoardPicker);
             }
             SlashCommand::Fork => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession);
