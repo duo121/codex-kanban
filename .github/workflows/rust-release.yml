@@ -65,9 +65,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-xlarge
+          - runner: macos-14
             target: aarch64-apple-darwin
-          - runner: macos-15-xlarge
+          - runner: macos-15-intel
             target: x86_64-apple-darwin
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
@@ -365,6 +365,7 @@ jobs:
             codex-rs/dist/${{ matrix.target }}/*
 
   build-windows:
+    if: ${{ vars.ENABLE_WINDOWS_RELEASE == 'true' }}
     needs: tag-check
     uses: ./.github/workflows/rust-release-windows.yml
     with:
@@ -372,6 +373,7 @@ jobs:
     secrets: inherit
 
   shell-tool-mcp:
+    if: ${{ vars.ENABLE_SHELL_TOOL_MCP_RELEASE == 'true' }}
     name: shell-tool-mcp
     needs: tag-check
     uses: ./.github/workflows/shell-tool-mcp.yml
@@ -381,6 +383,7 @@ jobs:
     secrets: inherit
 
   argument-comment-lint-release-assets:
+    if: ${{ vars.ENABLE_ARGUMENT_COMMENT_LINT_RELEASE == 'true' }}
     name: argument-comment-lint release assets
     needs: tag-check
     uses: ./.github/workflows/rust-release-argument-comment-lint.yml
@@ -390,9 +393,6 @@ jobs:
   release:
     needs:
       - build
-      - build-windows
-      - shell-tool-mcp
-      - argument-comment-lint-release-assets
     name: release
     runs-on: ubuntu-latest
     permissions:
@@ -587,7 +587,6 @@ jobs:
             "codex-npm-${version}.tgz"
             "codex-npm-linux-*-${version}.tgz"
             "codex-npm-darwin-*-${version}.tgz"
-            "codex-npm-win32-*-${version}.tgz"
             "codex-responses-api-proxy-npm-${version}.tgz"
             "codex-sdk-npm-${version}.tgz"
           )
@@ -622,7 +621,7 @@ jobs:
             tag=""
 
             case "${filename}" in
-              codex-npm-linux-*-"${VERSION}".tgz|codex-npm-darwin-*-"${VERSION}".tgz|codex-npm-win32-*-"${VERSION}".tgz)
+              codex-npm-linux-*-"${VERSION}".tgz|codex-npm-darwin-*-"${VERSION}".tgz)
                 platform="${filename#codex-npm-}"
                 platform="${platform%-${VERSION}.tgz}"
                 tag="${prefix}${platform}"
@@ -661,11 +660,9 @@ jobs:
           done
 
   winget:
+    if: ${{ vars.ENABLE_WINDOWS_RELEASE == 'true' && !contains(needs.release.outputs.version, '-') }}
     name: winget
     needs: release
-    # Only publish stable/mainline releases to WinGet; pre-releases include a
-    # '-' in the semver string (e.g., 1.2.3-alpha.1).
-    if: ${{ !contains(needs.release.outputs.version, '-') }}
     # This job only invokes a GitHub Action to open/update the winget-pkgs PR;
     # it does not execute Windows-only tooling, so Linux is sufficient.
     runs-on: ubuntu-latest
