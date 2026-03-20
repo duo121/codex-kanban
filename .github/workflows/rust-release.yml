@@ -230,7 +230,7 @@ jobs:
           target: ${{ matrix.target }}
           artifacts-dir: ${{ github.workspace }}/codex-rs/target/${{ matrix.target }}/release
 
-      - if: ${{ runner.os == 'macOS' }}
+      - if: ${{ runner.os == 'macOS' && vars.ENABLE_APPLE_SIGNING == 'true' }}
         name: MacOS code signing (binaries)
         uses: ./.github/actions/macos-code-sign
         with:
@@ -289,7 +289,7 @@ jobs:
             exit 1
           fi
 
-      - if: ${{ runner.os == 'macOS' }}
+      - if: ${{ runner.os == 'macOS' && vars.ENABLE_APPLE_SIGNING == 'true' }}
         name: MacOS code signing (dmg)
         uses: ./.github/actions/macos-code-sign
         with:
