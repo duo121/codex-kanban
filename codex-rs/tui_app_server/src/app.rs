@@ -97,6 +97,7 @@ use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SkillErrorInfo;
 use codex_protocol::protocol::TokenUsage;
+use codex_terminal_detection::user_agent;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
@@ -2056,6 +2057,12 @@ impl App {
                 app_server.thread_realtime_stop(thread_id).await?;
                 Ok(true)
             }
+            AppCommandView::RunUserShellCommand { command } => {
+                app_server
+                    .thread_shell_command(thread_id, command.to_string())
+                    .await?;
+                Ok(true)
+            }
             AppCommandView::OverrideTurnContext { .. } => Ok(true),
             _ => Ok(false),
         }
@@ -2971,7 +2978,7 @@ impl App {
             auth_mode,
             codex_core::default_client::originator().value,
             config.otel.log_user_prompt,
-            codex_core::terminal::user_agent(),
+            user_agent(),
             SessionSource::Cli,
         );
         if config

@@ -40,6 +40,7 @@ pub use model::BoardOverview;
 pub use model::BoardSession;
 pub use model::BoardSessionMoveDirection;
 pub use model::BoardSessionStatus;
+pub use model::DirectionalThreadSpawnEdgeStatus;
 pub use model::ExtractionOutcome;
 pub use model::SortKey;
 pub use model::Stage1JobClaim;

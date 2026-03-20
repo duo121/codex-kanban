@@ -1,6 +1,7 @@
 mod agent_job;
 mod backfill_state;
 mod boards;
+mod graph;
 mod log;
 mod memories;
 mod thread_metadata;
@@ -19,6 +20,7 @@ pub use boards::BoardOverview;
 pub use boards::BoardSession;
 pub use boards::BoardSessionMoveDirection;
 pub use boards::BoardSessionStatus;
+pub use graph::DirectionalThreadSpawnEdgeStatus;
 pub use log::LogEntry;
 pub use log::LogQuery;
 pub use log::LogRow;
