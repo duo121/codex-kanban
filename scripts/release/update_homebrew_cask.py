@@ -86,7 +86,6 @@ def render_cask(version: str, repo: str, arm_sha256: str, intel_sha256: str) -> 
 
     binary "package/vendor/aarch64-apple-darwin/codex/codex", target: "codexkb"
     binary "package/vendor/aarch64-apple-darwin/codex/codex", target: "codex-kanban"
-    binary "package/vendor/aarch64-apple-darwin/codex/codex", target: "codex-kanabn"
   end
 
   on_intel do
@@ -95,7 +94,6 @@ def render_cask(version: str, repo: str, arm_sha256: str, intel_sha256: str) -> 
 
     binary "package/vendor/x86_64-apple-darwin/codex/codex", target: "codexkb"
     binary "package/vendor/x86_64-apple-darwin/codex/codex", target: "codex-kanban"
-    binary "package/vendor/x86_64-apple-darwin/codex/codex", target: "codex-kanabn"
   end
 
   name "codex-kanban"

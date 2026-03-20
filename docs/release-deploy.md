@@ -72,8 +72,6 @@ brew install --cask codex-kanban
 codexkb
 # or
 codex-kanban
-# typo-friendly
-codex-kanabn
 ```
 
 ## 5. 本地验收顺序（你指定的流程）

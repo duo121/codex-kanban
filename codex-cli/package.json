@@ -4,8 +4,7 @@
   "license": "Apache-2.0",
   "bin": {
     "codexkb": "bin/codex.js",
-    "codex-kanban": "bin/codex.js",
-    "codex-kanabn": "bin/codex.js"
+    "codex-kanban": "bin/codex.js"
   },
   "type": "module",
   "engines": {

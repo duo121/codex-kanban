@@ -223,7 +223,6 @@ cp "$tmp_dir/package/vendor/$vendor_target/path/rg" "$INSTALL_DIR/rg"
 chmod 0755 "$INSTALL_DIR/$primary_cmd"
 chmod 0755 "$INSTALL_DIR/rg"
 ln -sf "$primary_cmd" "$INSTALL_DIR/codex-kanban"
-ln -sf "$primary_cmd" "$INSTALL_DIR/codex-kanabn"
 
 add_to_path
 

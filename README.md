@@ -18,8 +18,6 @@ Start with either command:
 codexkb
 # or
 codex-kanban
-# typo-friendly alias
-codex-kanabn
 ```
 
 Homebrew support:

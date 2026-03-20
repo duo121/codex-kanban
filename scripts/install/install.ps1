@@ -159,7 +159,6 @@ try {
     }
 
     Copy-Item -Force (Join-Path $installDir $primaryExe) (Join-Path $installDir "codex-kanban.exe")
-    Copy-Item -Force (Join-Path $installDir $primaryExe) (Join-Path $installDir "codex-kanabn.exe")
 } finally {
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
 }
