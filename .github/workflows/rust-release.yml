@@ -1,8 +1,8 @@
 # Release workflow for codex-rs.
 # To release, follow a workflow like:
 # ```
-# git tag -a rust-v0.1.0 -m "Release 0.1.0"
-# git push origin rust-v0.1.0
+# git tag -a rust-v0.116.0-kanban.0 -m "Release 0.116.0-kanban.0"
+# git push origin rust-v0.116.0-kanban.0
 # ```
 
 name: rust-release
@@ -30,7 +30,7 @@ jobs:
           # 1. Must be a tag and match the regex
           [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
             || { echo "❌  Not a tag push"; exit 1; }
-          [[ "${GITHUB_REF_NAME}" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]] \
+          [[ "${GITHUB_REF_NAME}" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] \
             || { echo "❌  Tag '${GITHUB_REF_NAME}' doesn't match expected format"; exit 1; }
 
           # 2. Extract versions
@@ -502,9 +502,7 @@ jobs:
         run: |
           ./scripts/stage_npm_packages.py \
             --release-version "$RELEASE_VERSION" \
-            --package codex \
-            --package codex-responses-api-proxy \
-            --package codex-sdk
+            --package codex
 
       - name: Stage installer scripts
         run: |
@@ -587,8 +585,7 @@ jobs:
             "codex-npm-${version}.tgz"
             "codex-npm-linux-*-${version}.tgz"
             "codex-npm-darwin-*-${version}.tgz"
-            "codex-responses-api-proxy-npm-${version}.tgz"
-            "codex-sdk-npm-${version}.tgz"
+            "codex-npm-win32-*-${version}.tgz"
           )
           for pattern in "${patterns[@]}"; do
             gh release download "$tag" \
@@ -610,23 +607,30 @@ jobs:
           fi
 
           shopt -s nullglob
-          tarballs=(dist/npm/*-"${VERSION}".tgz)
-          if [[ ${#tarballs[@]} -eq 0 ]]; then
-            echo "No npm tarballs found in dist/npm for version ${VERSION}"
+          root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
+          if [[ ! -f "${root_tarball}" ]]; then
+            echo "Missing root npm tarball for version ${VERSION}: ${root_tarball}"
             exit 1
           fi
+
+          platform_tarballs=(
+            dist/npm/codex-npm-linux-*-"${VERSION}".tgz
+            dist/npm/codex-npm-darwin-*-"${VERSION}".tgz
+            dist/npm/codex-npm-win32-*-"${VERSION}".tgz
+          )
+          tarballs=("${platform_tarballs[@]}" "${root_tarball}")
 
           for tarball in "${tarballs[@]}"; do
             filename="$(basename "${tarball}")"
             tag=""
 
             case "${filename}" in
-              codex-npm-linux-*-"${VERSION}".tgz|codex-npm-darwin-*-"${VERSION}".tgz)
+              codex-npm-linux-*-"${VERSION}".tgz|codex-npm-darwin-*-"${VERSION}".tgz|codex-npm-win32-*-"${VERSION}".tgz)
                 platform="${filename#codex-npm-}"
                 platform="${platform%-${VERSION}.tgz}"
                 tag="${prefix}${platform}"
                 ;;
-              codex-npm-"${VERSION}".tgz|codex-responses-api-proxy-npm-"${VERSION}".tgz|codex-sdk-npm-"${VERSION}".tgz)
+              codex-npm-"${VERSION}".tgz)
                 tag="${NPM_TAG}"
                 ;;
               *)

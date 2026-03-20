@@ -129,6 +129,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        help=(
+            "Optional local artifacts directory. When provided, skip downloading "
+            "artifacts from a workflow URL."
+        ),
+    )
+    parser.add_argument(
         "--component",
         dest="components",
         action="append",
@@ -160,30 +168,47 @@ def main() -> int:
 
     components = args.components or [
         "codex",
-        "codex-windows-sandbox-setup",
-        "codex-command-runner",
         "rg",
     ]
 
-    workflow_url = (args.workflow_url or DEFAULT_WORKFLOW_URL).strip()
-    if not workflow_url:
-        raise RuntimeError(
-            "Missing --workflow-url. Provide a release workflow run URL for your repository."
+    selected_binary_components = [BINARY_COMPONENTS[name] for name in components if name in BINARY_COMPONENTS]
+    artifact_targets = _collect_component_targets(selected_binary_components)
+
+    if args.artifacts_dir is not None:
+        artifacts_dir = args.artifacts_dir.resolve()
+        if not artifacts_dir.exists():
+            raise FileNotFoundError(f"--artifacts-dir does not exist: {artifacts_dir}")
+        install_binary_components(
+            artifacts_dir,
+            vendor_dir,
+            selected_binary_components,
         )
-
-    workflow_repo = _repo_from_workflow_url(workflow_url)
-    workflow_id = workflow_url.rstrip("/").split("/")[-1]
-    print(f"Downloading native artifacts from {workflow_repo} workflow {workflow_id}...")
-
-    with _gha_group(f"Download native artifacts from workflow {workflow_id}"):
-        with tempfile.TemporaryDirectory(prefix="codex-native-artifacts-") as artifacts_dir_str:
-            artifacts_dir = Path(artifacts_dir_str)
-            _download_artifacts(workflow_id, workflow_repo, artifacts_dir)
-            install_binary_components(
-                artifacts_dir,
-                vendor_dir,
-                [BINARY_COMPONENTS[name] for name in components if name in BINARY_COMPONENTS],
+    else:
+        workflow_url = (args.workflow_url or DEFAULT_WORKFLOW_URL).strip()
+        if not workflow_url:
+            raise RuntimeError(
+                "Missing --workflow-url. Provide a release workflow run URL for your repository "
+                "or pass --artifacts-dir."
             )
+
+        workflow_repo = _repo_from_workflow_url(workflow_url)
+        workflow_id = workflow_url.rstrip("/").split("/")[-1]
+        print(f"Downloading native artifacts from {workflow_repo} workflow {workflow_id}...")
+
+        with _gha_group(f"Download native artifacts from workflow {workflow_id}"):
+            with tempfile.TemporaryDirectory(prefix="codex-native-artifacts-") as artifacts_dir_str:
+                artifacts_dir = Path(artifacts_dir_str)
+                _download_artifacts(
+                    workflow_id,
+                    workflow_repo,
+                    artifacts_dir,
+                    artifact_names=artifact_targets,
+                )
+                install_binary_components(
+                    artifacts_dir,
+                    vendor_dir,
+                    selected_binary_components,
+                )
 
     if "rg" in components:
         with _gha_group("Fetch ripgrep binaries"):
@@ -270,7 +295,20 @@ def _repo_from_workflow_url(workflow_url: str) -> str:
     return DEFAULT_ARTIFACT_REPO
 
 
-def _download_artifacts(workflow_id: str, workflow_repo: str, dest_dir: Path) -> None:
+def _collect_component_targets(selected_components: Sequence[BinaryComponent]) -> list[str]:
+    targets: set[str] = set()
+    for component in selected_components:
+        targets.update(component.targets or BINARY_TARGETS)
+    return sorted(targets)
+
+
+def _download_artifacts(
+    workflow_id: str,
+    workflow_repo: str,
+    dest_dir: Path,
+    *,
+    artifact_names: Sequence[str] | None = None,
+) -> None:
     cmd = [
         "gh",
         "run",
@@ -281,6 +319,8 @@ def _download_artifacts(workflow_id: str, workflow_repo: str, dest_dir: Path) ->
         workflow_repo,
         workflow_id,
     ]
+    for artifact_name in artifact_names or ():
+        cmd.extend(["--name", artifact_name])
     subprocess.check_call(cmd)
 
 

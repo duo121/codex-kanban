@@ -6,17 +6,15 @@
 
 1. npm 作用域与包名
 - 确保你拥有 `@duo121` scope 的发布权限。
-- 需要发布的包：
-  - `@duo121/codex-kanban`
-  - `@duo121/codex-kanban-linux-x64`
-  - `@duo121/codex-kanban-linux-arm64`
-  - `@duo121/codex-kanban-darwin-x64`
-  - `@duo121/codex-kanban-darwin-arm64`
-  - `@duo121/codex-kanban-win32-x64`
-  - `@duo121/codex-kanban-win32-arm64`
+- 这个 fork 实际发布到 npm 的包名只有一个：`@duo121/codex-kanban`
+- Linux / macOS / Windows 平台变体不是单独的 npm 包；它们是同名包的不同平台版本，例如：
+  - `0.116.0-kanban.0-linux-x64`
+  - `0.116.0-kanban.0-darwin-arm64`
+  - `0.116.0-kanban.0-win32-x64`
+- 根包里的 `optionalDependencies` 会使用 `npm:` alias 指向这些平台版本，所以你不需要额外创建 `@duo121/codex-kanban-linux-x64` 这类真实包名。
 
 2. npm Trusted Publisher（推荐）
-- 在 npm 上把上述包绑定到 GitHub 仓库 `duo121/codex-kanban` 的 release workflow（`.github/workflows/rust-release.yml`）。
+- 在 npm 上把 `@duo121/codex-kanban` 绑定到 GitHub 仓库 `duo121/codex-kanban` 的 release workflow（`.github/workflows/rust-release.yml`）。
 
 3. GitHub Secrets
 - `HOMEBREW_TAP_TOKEN`：用于向 tap 仓库推送 cask 更新。
@@ -46,10 +44,25 @@ python3 ./scripts/release/update_homebrew_cask.py \
 
 ## 3. 发布流程（推荐）
 
-1. 在 `codex-kanban` 打 tag，例如：`rust-v0.1.0`。
+版本号策略（建议）：
+
+- 跟随上游官方稳定版本，并添加 fork 后缀：`<官方版本>-kanban.<序号>`
+- 示例：
+  - 官方 `0.116.0` -> fork 首发 `0.116.0-kanban.0`
+  - 同一官方版本上的增量发布：`0.116.0-kanban.1`
+  - 同步到官方 `0.117.0` 后重置为 `0.117.0-kanban.0`
+
+1. 在 `codex-kanban` 打 tag，例如：`rust-v0.116.0-kanban.0`。
 2. 触发 `rust-release.yml`，产出 GitHub Release 与 npm tarballs。
 3. `publish-npm` job 会自动发布 npm 包（基于 OIDC）。
 4. 触发 `homebrew-cask.yml`，自动更新 tap 仓库中的 `Casks/codex-kanban.rb`。
+
+说明：
+
+- 你本地只有 macOS 也没关系；Linux 和 Windows 的 npm 平台包由 GitHub Actions 在对应 runner 上构建并发布。
+- 当前 workflow 只发布 `@duo121/codex-kanban` 这一组 CLI npm tarballs，不再尝试发布 `@openai/codex-responses-api-proxy` 或 `@openai/codex-sdk`。
+- `publish-npm` 会先发平台 tarball，再发根包，避免 `latest` 先指向一个还拿不到平台依赖的版本。
+- 如果是这些 npm 包第一次出现在 npm 上，需要先完成一次首发，然后再到 npm 包设置里绑定 Trusted Publisher。
 
 ## 4. 用户安装命令
 
