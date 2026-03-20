@@ -1,12 +1,11 @@
 #![cfg(not(debug_assertions))]
 
-use crate::update_action;
-use crate::update_action::UpdateAction;
 use chrono::DateTime;
 use chrono::Duration;
 use chrono::Utc;
 use codex_core::config::Config;
 use codex_core::default_client::create_client;
+use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::path::Path;
@@ -20,7 +19,9 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
     }
 
     let version_file = version_filepath(config);
-    let info = read_version_info(&version_file).ok();
+    let info = read_version_info(&version_file)
+        .ok()
+        .filter(version_info_matches_current_source);
 
     if match &info {
         None => true,
@@ -52,21 +53,16 @@ struct VersionInfo {
     last_checked_at: DateTime<Utc>,
     #[serde(default)]
     dismissed_version: Option<String>,
+    #[serde(default)]
+    release_source: Option<String>,
 }
 
 const VERSION_FILENAME: &str = "version.json";
-// We use the latest version from the cask if installation is via homebrew - homebrew does not immediately pick up the latest release and can lag behind.
-const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
+const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/duo121/codex-kanban/releases/latest";
 
 #[derive(Deserialize, Debug, Clone)]
 struct ReleaseInfo {
     tag_name: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct HomebrewCaskInfo {
-    version: String,
 }
 
 fn version_filepath(config: &Config) -> PathBuf {
@@ -79,30 +75,16 @@ fn read_version_info(version_file: &Path) -> anyhow::Result<VersionInfo> {
 }
 
 async fn check_for_update(version_file: &Path) -> anyhow::Result<()> {
-    let latest_version = match update_action::get_update_action() {
-        Some(UpdateAction::BrewUpgrade) => {
-            let HomebrewCaskInfo { version } = create_client()
-                .get(HOMEBREW_CASK_API_URL)
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<HomebrewCaskInfo>()
-                .await?;
-            version
-        }
-        _ => {
-            let ReleaseInfo {
-                tag_name: latest_tag_name,
-            } = create_client()
-                .get(LATEST_RELEASE_URL)
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<ReleaseInfo>()
-                .await?;
-            extract_version_from_latest_tag(&latest_tag_name)?
-        }
-    };
+    let ReleaseInfo {
+        tag_name: latest_tag_name,
+    } = create_client()
+        .get(LATEST_RELEASE_URL)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<ReleaseInfo>()
+        .await?;
+    let latest_version = extract_version_from_latest_tag(&latest_tag_name)?;
 
     // Preserve any previously dismissed version if present.
     let prev_info = read_version_info(version_file).ok();
@@ -110,6 +92,7 @@ async fn check_for_update(version_file: &Path) -> anyhow::Result<()> {
         latest_version,
         last_checked_at: Utc::now(),
         dismissed_version: prev_info.and_then(|p| p.dismissed_version),
+        release_source: Some(LATEST_RELEASE_URL.to_string()),
     };
 
     let json_line = format!("{}\n", serde_json::to_string(&info)?);
@@ -169,32 +152,18 @@ pub async fn dismiss_version(config: &Config, version: &str) -> anyhow::Result<(
     Ok(())
 }
 
-fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
-    let mut iter = v.trim().split('.');
-    let maj = iter.next()?.parse::<u64>().ok()?;
-    let min = iter.next()?.parse::<u64>().ok()?;
-    let pat = iter.next()?.parse::<u64>().ok()?;
-    Some((maj, min, pat))
+fn parse_version(v: &str) -> Option<Version> {
+    Version::parse(v.trim()).ok()
+}
+
+fn version_info_matches_current_source(info: &VersionInfo) -> bool {
+    info.release_source.as_deref() == Some(LATEST_RELEASE_URL)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn extract_version_from_brew_api_json() {
-        //
-        // https://formulae.brew.sh/api/cask/codex.json
-        let cask_json = r#"{
-            "token": "codex",
-            "full_token": "codex",
-            "tap": "homebrew/cask",
-            "version": "0.96.0",
-        }"#;
-        let HomebrewCaskInfo { version } = serde_json::from_str::<HomebrewCaskInfo>(cask_json)
-            .expect("failed to parse version from cask json");
-        assert_eq!(version, "0.96.0");
-    }
+    use chrono::TimeZone;
 
     #[test]
     fn extracts_version_from_latest_tag() {
@@ -211,8 +180,17 @@ mod tests {
 
     #[test]
     fn prerelease_version_is_not_considered_newer() {
-        assert_eq!(is_newer("0.11.0-beta.1", "0.11.0"), None);
-        assert_eq!(is_newer("1.0.0-rc.1", "1.0.0"), None);
+        assert_eq!(is_newer("0.11.0-beta.1", "0.11.0"), Some(false));
+        assert_eq!(is_newer("1.0.0-rc.1", "1.0.0"), Some(false));
+    }
+
+    #[test]
+    fn fork_suffix_versions_are_supported() {
+        assert_eq!(is_newer("0.116.0-kanban.1", "0.116.0-kanban.0"), Some(true));
+        assert_eq!(
+            is_newer("0.116.0-kanban.0", "0.116.0-kanban.1"),
+            Some(false)
+        );
     }
 
     #[test]
@@ -225,7 +203,34 @@ mod tests {
 
     #[test]
     fn whitespace_is_ignored() {
-        assert_eq!(parse_version(" 1.2.3 \n"), Some((1, 2, 3)));
+        assert_eq!(
+            parse_version(" 1.2.3 \n"),
+            Some(Version::parse("1.2.3").expect("valid semver"))
+        );
         assert_eq!(is_newer(" 1.2.3 ", "1.2.2"), Some(true));
+    }
+
+    #[test]
+    fn cached_version_without_release_source_is_ignored() {
+        let info = VersionInfo {
+            latest_version: "0.116.0".to_string(),
+            last_checked_at: Utc.timestamp_opt(0, 0).single().expect("valid timestamp"),
+            dismissed_version: None,
+            release_source: None,
+        };
+
+        assert!(!version_info_matches_current_source(&info));
+    }
+
+    #[test]
+    fn cached_version_with_current_release_source_is_accepted() {
+        let info = VersionInfo {
+            latest_version: "0.116.0-kanban.1".to_string(),
+            last_checked_at: Utc.timestamp_opt(0, 0).single().expect("valid timestamp"),
+            dismissed_version: None,
+            release_source: Some(LATEST_RELEASE_URL.to_string()),
+        };
+
+        assert!(version_info_matches_current_source(&info));
     }
 }
