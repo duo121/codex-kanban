@@ -48,7 +48,7 @@ jobs:
   build:
     needs: tag-check
     name: Build - ${{ matrix.runner }} - ${{ matrix.target }}
-    runs-on: ${{ matrix.runs_on || matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -538,7 +538,7 @@ jobs:
 
       - name: Trigger project docs deploy (optional)
         # Only trigger for stable releases when a deploy hook has been configured.
-        if: ${{ !contains(steps.release_name.outputs.name, '-') && secrets.PROJECT_VERCEL_DEPLOY_HOOK_URL != '' }}
+        if: ${{ !contains(steps.release_name.outputs.name, '-') && env.PROJECT_VERCEL_DEPLOY_HOOK_URL != '' }}
         continue-on-error: true
         env:
           PROJECT_VERCEL_DEPLOY_HOOK_URL: ${{ secrets.PROJECT_VERCEL_DEPLOY_HOOK_URL }}
@@ -665,7 +665,7 @@ jobs:
     needs: release
     # Only publish stable/mainline releases to WinGet; pre-releases include a
     # '-' in the semver string (e.g., 1.2.3-alpha.1).
-    if: ${{ !contains(needs.release.outputs.version, '-') && secrets.WINGET_PUBLISH_PAT != '' }}
+    if: ${{ !contains(needs.release.outputs.version, '-') }}
     # This job only invokes a GitHub Action to open/update the winget-pkgs PR;
     # it does not execute Windows-only tooling, so Linux is sufficient.
     runs-on: ubuntu-latest
@@ -673,7 +673,16 @@ jobs:
       contents: read
 
     steps:
+      - name: Skip when WinGet token is not configured
+        if: ${{ env.WINGET_PUBLISH_PAT == '' }}
+        env:
+          WINGET_PUBLISH_PAT: ${{ secrets.WINGET_PUBLISH_PAT }}
+        run: echo "WINGET_PUBLISH_PAT is empty, skipping WinGet publish."
+
       - name: Publish to WinGet
+        if: ${{ env.WINGET_PUBLISH_PAT != '' }}
+        env:
+          WINGET_PUBLISH_PAT: ${{ secrets.WINGET_PUBLISH_PAT }}
         uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f
         with:
           identifier: Duo121.CodexKanban
@@ -681,7 +690,7 @@ jobs:
           release-tag: ${{ needs.release.outputs.tag }}
           fork-user: duo121
           installers-regex: '^codex-(?:x86_64|aarch64)-pc-windows-msvc\.exe\.zip$'
-          token: ${{ secrets.WINGET_PUBLISH_PAT }}
+          token: ${{ env.WINGET_PUBLISH_PAT }}
 
   update-branch:
     name: Update latest-alpha-cli branch
