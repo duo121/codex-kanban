@@ -293,7 +293,29 @@ def install_binary_components(
         return
 
     for component in selected_components:
-        component_targets = list(component.targets or BINARY_TARGETS)
+        requested_targets = list(component.targets or BINARY_TARGETS)
+        component_targets: list[str] = []
+        missing_targets: list[str] = []
+        for target in requested_targets:
+            artifact_subdir = artifacts_dir / target
+            archive_name = _archive_name_for_target(component.artifact_prefix, target)
+            archive_path = artifact_subdir / archive_name
+            if archive_path.exists():
+                component_targets.append(target)
+            else:
+                missing_targets.append(target)
+
+        if missing_targets:
+            print(
+                f"  skipping {component.binary_basename} targets without artifacts: "
+                + ", ".join(missing_targets)
+            )
+
+        if not component_targets:
+            raise FileNotFoundError(
+                "No matching artifacts found for component "
+                f"{component.binary_basename} (requested targets: {', '.join(requested_targets)})."
+            )
 
         print(
             f"Installing {component.binary_basename} binaries for targets: "
