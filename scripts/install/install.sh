@@ -6,6 +6,7 @@ VERSION="${1:-latest}"
 INSTALL_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 path_action="already"
 path_profile=""
+primary_cmd="codexkb"
 
 step() {
   printf '==> %s\n' "$1"
@@ -42,7 +43,7 @@ download_file() {
     return
   fi
 
-  echo "curl or wget is required to install Codex." >&2
+  echo "curl or wget is required to install codex-kanban." >&2
   exit 1
 }
 
@@ -59,7 +60,7 @@ download_text() {
     return
   fi
 
-  echo "curl or wget is required to install Codex." >&2
+  echo "curl or wget is required to install codex-kanban." >&2
   exit 1
 }
 
@@ -101,12 +102,12 @@ release_url_for_asset() {
   asset="$1"
   resolved_version="$2"
 
-  printf 'https://github.com/openai/codex/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
+  printf 'https://github.com/duo121/codex-kanban/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
 }
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "$1 is required to install Codex." >&2
+    echo "$1 is required to install codex-kanban." >&2
     exit 1
   fi
 }
@@ -122,11 +123,11 @@ resolve_version() {
     return
   fi
 
-  release_json="$(download_text "https://api.github.com/repos/openai/codex/releases/latest")"
+  release_json="$(download_text "https://api.github.com/repos/duo121/codex-kanban/releases/latest")"
   resolved="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name":[[:space:]]*"rust-v\([^"]*\)".*/\1/p' | head -n 1)"
 
   if [ -z "$resolved" ]; then
-    echo "Failed to resolve the latest Codex release version." >&2
+    echo "Failed to resolve the latest codex-kanban release version." >&2
     exit 1
   fi
 
@@ -187,13 +188,13 @@ else
   fi
 fi
 
-if [ -x "$INSTALL_DIR/codex" ]; then
+if [ -x "$INSTALL_DIR/$primary_cmd" ]; then
   install_mode="Updating"
 else
   install_mode="Installing"
 fi
 
-step "$install_mode Codex CLI"
+step "$install_mode codex-kanban CLI"
 step "Detected platform: $platform_label"
 
 resolved_version="$(resolve_version)"
@@ -210,34 +211,36 @@ trap cleanup EXIT INT TERM
 
 archive_path="$tmp_dir/$asset"
 
-step "Downloading Codex CLI"
+step "Downloading codex-kanban"
 download_file "$download_url" "$archive_path"
 
 tar -xzf "$archive_path" -C "$tmp_dir"
 
 step "Installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
-cp "$tmp_dir/package/vendor/$vendor_target/codex/codex" "$INSTALL_DIR/codex"
+cp "$tmp_dir/package/vendor/$vendor_target/codex/codex" "$INSTALL_DIR/$primary_cmd"
 cp "$tmp_dir/package/vendor/$vendor_target/path/rg" "$INSTALL_DIR/rg"
-chmod 0755 "$INSTALL_DIR/codex"
+chmod 0755 "$INSTALL_DIR/$primary_cmd"
 chmod 0755 "$INSTALL_DIR/rg"
+ln -sf "$primary_cmd" "$INSTALL_DIR/codex-kanban"
+ln -sf "$primary_cmd" "$INSTALL_DIR/codex-kanabn"
 
 add_to_path
 
 case "$path_action" in
   added)
     step "PATH updated for future shells in $path_profile"
-    step "Run now: export PATH=\"$INSTALL_DIR:\$PATH\" && codex"
-    step "Or open a new terminal and run: codex"
+    step "Run now: export PATH=\"$INSTALL_DIR:\$PATH\" && $primary_cmd"
+    step "Or open a new terminal and run: $primary_cmd"
     ;;
   configured)
     step "PATH is already configured for future shells in $path_profile"
-    step "Run now: export PATH=\"$INSTALL_DIR:\$PATH\" && codex"
-    step "Or open a new terminal and run: codex"
+    step "Run now: export PATH=\"$INSTALL_DIR:\$PATH\" && $primary_cmd"
+    step "Or open a new terminal and run: $primary_cmd"
     ;;
   *)
     step "$INSTALL_DIR is already on PATH"
-    step "Run: codex"
+    step "Run: $primary_cmd"
     ;;
 esac
 

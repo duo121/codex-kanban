@@ -1,0 +1,80 @@
+name: homebrew-cask
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release-version:
+        description: "Release version (for example: 0.1.0 or rust-v0.1.0)"
+        required: true
+        type: string
+
+jobs:
+  update-homebrew-cask:
+    name: update-homebrew-cask
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout codex-kanban
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            raw="${{ inputs.release-version }}"
+          else
+            raw="${{ github.event.release.tag_name }}"
+          fi
+
+          version="$raw"
+          version="${version#rust-v}"
+          version="${version#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "Unable to resolve release version"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: duo121/homebrew-codex-kanban
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-codex-kanban
+
+      - name: Generate cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 ./scripts/release/update_homebrew_cask.py \
+            --version "${{ steps.meta.outputs.version }}" \
+            --repo "duo121/codex-kanban" \
+            --tap-dir "${GITHUB_WORKSPACE}/homebrew-codex-kanban"
+
+      - name: Commit and push cask update
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd homebrew-codex-kanban
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/codex-kanban.rb
+          if git diff --cached --quiet; then
+            echo "No cask changes detected"
+            exit 0
+          fi
+
+          git commit -m "chore: update codex-kanban cask to v${{ steps.meta.outputs.version }}"
+          git push

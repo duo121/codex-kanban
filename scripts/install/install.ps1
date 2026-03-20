@@ -41,7 +41,7 @@ function Get-ReleaseUrl {
         [string]$ResolvedVersion
     )
 
-    return "https://github.com/openai/codex/releases/download/rust-v$ResolvedVersion/$AssetName"
+    return "https://github.com/duo121/codex-kanban/releases/download/rust-v$ResolvedVersion/$AssetName"
 }
 
 function Path-Contains {
@@ -70,9 +70,9 @@ function Resolve-Version {
         return $normalizedVersion
     }
 
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/openai/codex/releases/latest"
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/duo121/codex-kanban/releases/latest"
     if (-not $release.tag_name) {
-        Write-Error "Failed to resolve the latest Codex release version."
+        Write-Error "Failed to resolve the latest codex-kanban release version."
         exit 1
     }
 
@@ -111,15 +111,16 @@ switch ($architecture) {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALL_DIR)) {
-    $installDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
+    $installDir = Join-Path $env:LOCALAPPDATA "Programs\duo121\codex-kanban\bin"
 } else {
     $installDir = $env:CODEX_INSTALL_DIR
 }
 
-$codexPath = Join-Path $installDir "codex.exe"
+$primaryExe = "codexkb.exe"
+$codexPath = Join-Path $installDir $primaryExe
 $installMode = if (Test-Path $codexPath) { "Updating" } else { "Installing" }
 
-Write-Step "$installMode Codex CLI"
+Write-Step "$installMode codex-kanban CLI"
 Write-Step "Detected platform: $platformLabel"
 
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
@@ -136,7 +137,7 @@ try {
     $extractDir = Join-Path $tempDir "extract"
     $url = Get-ReleaseUrl -AssetName $packageAsset -ResolvedVersion $resolvedVersion
 
-    Write-Step "Downloading Codex CLI"
+    Write-Step "Downloading codex-kanban"
     Invoke-WebRequest -Uri $url -OutFile $archivePath
 
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
@@ -145,7 +146,7 @@ try {
     $vendorRoot = Join-Path $extractDir "package/vendor/$target"
     Write-Step "Installing to $installDir"
     $copyMap = @{
-        "codex/codex.exe" = "codex.exe"
+        "codex/codex.exe" = $primaryExe
         "codex/codex-command-runner.exe" = "codex-command-runner.exe"
         "codex/codex-windows-sandbox-setup.exe" = "codex-windows-sandbox-setup.exe"
         "path/rg.exe" = "rg.exe"
@@ -156,6 +157,9 @@ try {
         $destinationPath = Join-Path $installDir $copyMap[$relativeSource]
         Move-Item -Force $sourcePath $destinationPath
     }
+
+    Copy-Item -Force (Join-Path $installDir $primaryExe) (Join-Path $installDir "codex-kanban.exe")
+    Copy-Item -Force (Join-Path $installDir $primaryExe) (Join-Path $installDir "codex-kanabn.exe")
 } finally {
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
 }
@@ -187,10 +191,10 @@ if (-not (Path-Contains -PathValue $userPath -Entry $installDir)) {
 }
 
 if ($pathNeedsNewShell) {
-    Write-Step ('Run now: $env:Path = "{0};$env:Path"; codex' -f $installDir)
-    Write-Step "Or open a new PowerShell window and run: codex"
+    Write-Step ('Run now: $env:Path = "{0};$env:Path"; codexkb' -f $installDir)
+    Write-Step "Or open a new PowerShell window and run: codexkb"
 } else {
-    Write-Step "Run: codex"
+    Write-Step "Run: codexkb"
 }
 
-Write-Host "Codex CLI $resolvedVersion installed successfully."
+Write-Host "codex-kanban CLI $resolvedVersion installed successfully."

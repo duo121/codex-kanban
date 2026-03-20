@@ -20,7 +20,8 @@ from urllib.request import urlopen
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CODEX_CLI_ROOT = SCRIPT_DIR.parent
-DEFAULT_WORKFLOW_URL = "https://github.com/openai/codex/actions/runs/17952349351"  # rust-v0.40.0
+DEFAULT_WORKFLOW_URL = ""
+DEFAULT_ARTIFACT_REPO = "duo121/codex-kanban"
 VENDOR_DIR_NAME = "vendor"
 RG_MANIFEST = CODEX_CLI_ROOT / "bin" / "rg"
 BINARY_TARGETS = (
@@ -124,8 +125,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workflow-url",
         help=(
-            "GitHub Actions workflow URL that produced the artifacts. Defaults to a "
-            "known good run when omitted."
+            "GitHub Actions workflow URL that produced the artifacts."
         ),
     )
     parser.add_argument(
@@ -167,15 +167,18 @@ def main() -> int:
 
     workflow_url = (args.workflow_url or DEFAULT_WORKFLOW_URL).strip()
     if not workflow_url:
-        workflow_url = DEFAULT_WORKFLOW_URL
+        raise RuntimeError(
+            "Missing --workflow-url. Provide a release workflow run URL for your repository."
+        )
 
+    workflow_repo = _repo_from_workflow_url(workflow_url)
     workflow_id = workflow_url.rstrip("/").split("/")[-1]
-    print(f"Downloading native artifacts from workflow {workflow_id}...")
+    print(f"Downloading native artifacts from {workflow_repo} workflow {workflow_id}...")
 
     with _gha_group(f"Download native artifacts from workflow {workflow_id}"):
         with tempfile.TemporaryDirectory(prefix="codex-native-artifacts-") as artifacts_dir_str:
             artifacts_dir = Path(artifacts_dir_str)
-            _download_artifacts(workflow_id, artifacts_dir)
+            _download_artifacts(workflow_id, workflow_repo, artifacts_dir)
             install_binary_components(
                 artifacts_dir,
                 vendor_dir,
@@ -259,7 +262,15 @@ def fetch_rg(
     return [results[target] for target in targets]
 
 
-def _download_artifacts(workflow_id: str, dest_dir: Path) -> None:
+def _repo_from_workflow_url(workflow_url: str) -> str:
+    parsed = urlparse(workflow_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return DEFAULT_ARTIFACT_REPO
+
+
+def _download_artifacts(workflow_id: str, workflow_repo: str, dest_dir: Path) -> None:
     cmd = [
         "gh",
         "run",
@@ -267,7 +278,7 @@ def _download_artifacts(workflow_id: str, dest_dir: Path) -> None:
         "--dir",
         str(dest_dir),
         "--repo",
-        "openai/codex",
+        workflow_repo,
         workflow_id,
     ]
     subprocess.check_call(cmd)

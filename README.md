@@ -4,6 +4,35 @@
 
 The project keeps the official chat experience as intact as possible and layers kanban-style session management on top of it instead of rebuilding the whole TUI.
 
+## Install and run
+
+Install from npm:
+
+```bash
+npm install -g @duo121/codex-kanban
+```
+
+Start with either command:
+
+```bash
+codexkb
+# or
+codex-kanban
+# typo-friendly alias
+codex-kanabn
+```
+
+Homebrew support:
+
+- Recommended:
+
+```bash
+brew tap duo121/homebrew-codex-kanban
+brew install --cask codex-kanban
+```
+
+- `brew install --cask codex-kanban` without a tap only works after the cask is accepted into `homebrew/cask`.
+
 ## Why this fork exists
 
 The official Codex CLI is optimized around one terminal window per active session.
@@ -98,6 +127,7 @@ cargo run -p codex-cli --bin codex
 - [Slash commands](./docs/slash_commands.md)
 - [Product spec](./docs/codex-kanban-product-spec.md)
 - [Vercel docs-site deployment](./docs/vercel-deploy.md)
+- [Release deploy checklist](./docs/release-deploy.md)
 - [Contributing](./docs/contributing.md)
 - [Installing & building](./docs/install.md)
 
