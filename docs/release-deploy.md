@@ -61,6 +61,7 @@ python3 ./scripts/release/update_homebrew_cask.py \
 
 - 你本地只有 macOS 也没关系；Linux 和 Windows 的 npm 平台包由 GitHub Actions 在对应 runner 上构建并发布。
 - 当前 workflow 只发布 `@duo121/codex-kanban` 这一组 CLI npm tarballs，不再尝试发布 `@openai/codex-responses-api-proxy` 或 `@openai/codex-sdk`。
+- 如果仓库没有配置 `ENABLE_WINDOWS_RELEASE=true`、Windows runners 和签名 secrets，release 会自动跳过 win32 npm 包，只发布 Linux / macOS 平台包。
 - `publish-npm` 会先发平台 tarball，再发根包，避免 `latest` 先指向一个还拿不到平台依赖的版本。
 - 如果是这些 npm 包第一次出现在 npm 上，需要先完成一次首发，然后再到 npm 包设置里绑定 Trusted Publisher。
 

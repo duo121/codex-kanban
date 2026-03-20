@@ -44,6 +44,13 @@ def parse_args() -> argparse.Namespace:
         help="Package name to stage. May be provided multiple times.",
     )
     parser.add_argument(
+        "--exclude-package",
+        dest="excluded_packages",
+        action="append",
+        default=[],
+        help="Expanded package name to skip. May be provided multiple times.",
+    )
+    parser.add_argument(
         "--workflow-url",
         help="Optional workflow URL to reuse for native artifacts.",
     )
@@ -147,7 +154,14 @@ def main() -> int:
 
     runner_temp = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()))
 
-    packages = expand_packages(list(args.packages))
+    excluded_packages = set(args.excluded_packages)
+    packages = [
+        package
+        for package in expand_packages(list(args.packages))
+        if package not in excluded_packages
+    ]
+    if not packages:
+        raise RuntimeError("No npm packages remain after applying --exclude-package filters.")
     native_components = collect_native_components(packages)
 
     vendor_temp_root: Path | None = None

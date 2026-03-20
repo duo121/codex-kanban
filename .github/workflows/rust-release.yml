@@ -497,12 +497,24 @@ jobs:
       - uses: facebook/install-dotslash@v2
       - name: Stage npm packages
         env:
+          ENABLE_WINDOWS_RELEASE: ${{ vars.ENABLE_WINDOWS_RELEASE }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_name.outputs.name }}
         run: |
-          ./scripts/stage_npm_packages.py \
-            --release-version "$RELEASE_VERSION" \
+          args=(
+            ./scripts/stage_npm_packages.py
+            --release-version "$RELEASE_VERSION"
             --package codex
+          )
+
+          if [[ "${ENABLE_WINDOWS_RELEASE}" != "true" ]]; then
+            args+=(
+              --exclude-package codex-win32-x64
+              --exclude-package codex-win32-arm64
+            )
+          fi
+
+          "${args[@]}"
 
       - name: Stage installer scripts
         run: |
@@ -573,6 +585,7 @@ jobs:
 
       - name: Download npm tarballs from release
         env:
+          ENABLE_WINDOWS_RELEASE: ${{ vars.ENABLE_WINDOWS_RELEASE }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
           RELEASE_VERSION: ${{ needs.release.outputs.version }}
@@ -585,8 +598,10 @@ jobs:
             "codex-npm-${version}.tgz"
             "codex-npm-linux-*-${version}.tgz"
             "codex-npm-darwin-*-${version}.tgz"
-            "codex-npm-win32-*-${version}.tgz"
           )
+          if [[ "${ENABLE_WINDOWS_RELEASE}" == "true" ]]; then
+            patterns+=("codex-npm-win32-*-${version}.tgz")
+          fi
           for pattern in "${patterns[@]}"; do
             gh release download "$tag" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -597,6 +612,7 @@ jobs:
       # No NODE_AUTH_TOKEN needed because we use OIDC.
       - name: Publish to npm
         env:
+          ENABLE_WINDOWS_RELEASE: ${{ vars.ENABLE_WINDOWS_RELEASE }}
           VERSION: ${{ needs.release.outputs.version }}
           NPM_TAG: ${{ needs.release.outputs.npm_tag }}
         run: |
@@ -616,8 +632,10 @@ jobs:
           platform_tarballs=(
             dist/npm/codex-npm-linux-*-"${VERSION}".tgz
             dist/npm/codex-npm-darwin-*-"${VERSION}".tgz
-            dist/npm/codex-npm-win32-*-"${VERSION}".tgz
           )
+          if [[ "${ENABLE_WINDOWS_RELEASE}" == "true" ]]; then
+            platform_tarballs+=(dist/npm/codex-npm-win32-*-"${VERSION}".tgz)
+          fi
           tarballs=("${platform_tarballs[@]}" "${root_tarball}")
 
           for tarball in "${tarballs[@]}"; do
